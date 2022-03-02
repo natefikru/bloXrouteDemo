@@ -56,7 +56,7 @@ func consumeQueue(channel *amqp.Channel) {
 	}
 	fmt.Println("Started Listening to Rabbit MQ GETItem Queue")
 
-	forever := make(chan bool)
+	mqChannel := make(chan bool)
 	go func() {
 		for d := range msgs {
 			response := MQMessage{}
@@ -69,7 +69,7 @@ func consumeQueue(channel *amqp.Channel) {
 			}
 		}
 	}()
-	<-forever
+	<-mqChannel
 }
 
 func processMessage(message *MQMessage) error {

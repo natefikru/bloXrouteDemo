@@ -137,7 +137,7 @@ func sendToQueue(channel *amqp.Channel, command string, message string) error {
 
 	err := channel.Publish(
 		"",
-		QueueName, // POSTItem, GETItem, GETItems, DELETEItems
+		QueueName,
 		false,
 		false,
 		amqp.Publishing{
