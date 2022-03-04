@@ -38,51 +38,48 @@ func main() {
 	}
 
 	defer ch.Close()
-	consumeQueue(ch)
+	err = consumeQueue(ch)
+	if err != nil {
+		fmt.Println(err)
+		panic(err)
+	}
+
 }
 
-func consumeQueue(channel *amqp.Channel) {
-	msgs, err := channel.Consume(
-		QueueName,
-		"",
-		true,
-		false,
-		false,
-		false,
-		nil,
-	)
+func consumeQueue(channel *amqp.Channel) error {
+	messages, err := channel.Consume(QueueName, "", true, false, false, false, nil)
 	if err != nil {
-		fmt.Printf("error in consumeQueue at Consume() %v \n", err)
+		return fmt.Errorf("error in consumeQueue at postItemMessages Consume() %v", err)
 	}
-	fmt.Println("Started Listening to Rabbit MQ GETItem Queue")
+	fmt.Println("Started RabbitMQ Consumer Process")
 
 	mqChannel := make(chan bool)
 	go func() {
-		for d := range msgs {
-			response := MQMessage{}
-			err = json.Unmarshal(d.Body, &response)
-			if err != nil {
-				fmt.Printf("error unmarshalling message %v \n", d.Body)
-			} else {
-				fmt.Printf("Receied Message %v \n", response)
-				err = processMessage(&response)
-			}
+		for msg := range messages {
+			go processMessage(msg.Body)
 		}
 	}()
 	<-mqChannel
+	return nil
 }
 
-func processMessage(message *MQMessage) error {
-	command := message.Command
+func processMessage(body []byte) {
+	message := MQMessage{}
+	err := json.Unmarshal(body, &message)
+	if err != nil {
+		fmt.Printf("error unmarshalling message: %v %v \n", body, err)
+	} else {
+		fmt.Printf("Receied Message %v \n", message)
+	}
 	data := message.Data
-
+	command := message.Command
 	switch command {
 	case GetItem:
 		found := findInItemList(data)
 		if found {
-			fmt.Printf("%v Found in ItemList", data)
+			fmt.Printf("%v Found in ItemList \n", data)
 		} else {
-			fmt.Printf("%v Not found in ItemList", data)
+			fmt.Printf("%v Not found in ItemList\n", data)
 		}
 	case GetItems:
 		fmt.Println("Current ItemList")
@@ -96,7 +93,6 @@ func processMessage(message *MQMessage) error {
 		fmt.Println("Current ItemList")
 		fmt.Println(ItemList)
 	}
-	return nil
 }
 
 func removeFromItemList(data string) {

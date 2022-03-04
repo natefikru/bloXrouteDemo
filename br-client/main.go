@@ -19,6 +19,11 @@ const (
 	QueueName = "BRQueue"
 )
 
+type MQMessage struct {
+	Data    string `json:"data"`
+	Command string `json:"command"`
+}
+
 func main() {
 	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672")
 	if err != nil {
@@ -146,14 +151,9 @@ func sendToQueue(channel *amqp.Channel, command string, message string) error {
 		},
 	)
 	if err != nil {
-		err = fmt.Errorf("error sending message to queue, queue %v, command %v, message %v", QueueName, command, message)
+		err = fmt.Errorf("error sending message to queue, queue %v, message %v", command, message)
 		return err
 	}
 	fmt.Println("Message Succesfully Sent")
 	return nil
-}
-
-type MQMessage struct {
-	Data    string `json:"data"`
-	Command string `json:"command"`
 }
