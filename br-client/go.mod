@@ -1,4 +1,4 @@
-module bloxroute/queue-system/br-client
+module queue-system/br-client
 
 go 1.15
 
