@@ -23,43 +23,83 @@ type MQMessage struct {
 	Command string `json:"command"`
 }
 
-func main() {
-	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672")
-	if err != nil {
-		fmt.Println(err)
-		panic(err)
-	}
-	defer conn.Close()
-
-	ch, err := conn.Channel()
-	if err != nil {
-		fmt.Println(err)
-		panic(err)
-	}
-
-	defer ch.Close()
-	err = consumeQueue(ch)
-	if err != nil {
-		fmt.Println(err)
-		panic(err)
-	}
-
+type BRServer struct {
+	Connection *amqp.Connection
+	Channel    *amqp.Channel
+	Deliveries <-chan amqp.Delivery
 }
 
-func consumeQueue(channel *amqp.Channel) error {
-	messages, err := channel.Consume(QueueName, "", true, false, false, false, nil)
+func newBRServer() *BRServer {
+	return &BRServer{}
+}
+
+func main() {
+	brServer := newBRServer()
+	for i := 1; i < 5; i++ {
+		brServer.run()
+	}
+}
+
+func (s *BRServer) run() {
+	err := s.initConn()
+	if err != nil {
+		fmt.Println(err)
+		panic(err)
+	}
+
+	defer s.Connection.Close()
+	defer s.Channel.Close()
+
+	err = s.getDeliveries()
+	if err != nil {
+		fmt.Println(err)
+		panic(err)
+	}
+
+	err = s.consumeQueue()
+	if err != nil {
+		fmt.Println(err)
+		panic(err)
+	}
+}
+
+func (s *BRServer) initConn() error {
+	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672")
+	if err != nil {
+		return err
+	}
+
+	channel, err := conn.Channel()
+	if err != nil {
+		return err
+	}
+
+	s.Connection = conn
+	s.Channel = channel
+
+	return nil
+}
+
+func (s *BRServer) getDeliveries() error {
+	deliveries, err := s.Channel.Consume(QueueName, "", true, false, false, false, nil)
 	if err != nil {
 		return fmt.Errorf("error in consumeQueue at postItemMessages Consume() %v", err)
 	}
+
+	s.Deliveries = deliveries
+	return nil
+}
+
+func (s *BRServer) consumeQueue() error {
 	fmt.Println("Started RabbitMQ Consumer Process")
 
-	mqChannel := make(chan bool)
+	done := make(chan bool)
 	go func() {
-		for msg := range messages {
-			go processMessage(msg.Body)
+		for msg := range s.Deliveries {
+			processMessage(msg.Body)
 		}
 	}()
-	<-mqChannel
+	<-done
 	return nil
 }
 
