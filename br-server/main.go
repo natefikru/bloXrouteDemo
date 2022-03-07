@@ -16,8 +16,9 @@ const (
 	PostItem   = "POST_ITEM"
 	DeleteItem = "DELETE_ITEM"
 
-	QueueName  = "BRQueue"
-	ValuesFile = "values.log"
+	QueueName          = "BRQueue"
+	ValuesFile         = "values.log"
+	MQConnectionString = "amqp://guest:guest@localhost:5672"
 )
 
 var ItemList []string
@@ -101,7 +102,7 @@ func (s *BRServer) initFileConn() error {
 }
 
 func (s *BRServer) initMQConn() error {
-	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672")
+	conn, err := amqp.Dial(MQConnectionString)
 	if err != nil {
 		return err
 	}
