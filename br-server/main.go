@@ -40,9 +40,7 @@ func newBRServer() *BRServer {
 
 func main() {
 	brServer := newBRServer()
-	for i := 1; i < 5; i++ {
-		brServer.run()
-	}
+	brServer.run()
 }
 
 func (s *BRServer) run() {
@@ -80,23 +78,6 @@ func (s *BRServer) run() {
 	}
 }
 
-func (s *BRServer) initMQConn() error {
-	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672")
-	if err != nil {
-		return err
-	}
-
-	channel, err := conn.Channel()
-	if err != nil {
-		return err
-	}
-
-	s.Connection = conn
-	s.Channel = channel
-
-	return nil
-}
-
 func (s *BRServer) initFileConn() error {
 	var f *os.File
 	exists, err := valueFileExists()
@@ -116,6 +97,23 @@ func (s *BRServer) initFileConn() error {
 		}
 	}
 	s.File = f
+	return nil
+}
+
+func (s *BRServer) initMQConn() error {
+	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672")
+	if err != nil {
+		return err
+	}
+
+	channel, err := conn.Channel()
+	if err != nil {
+		return err
+	}
+
+	s.Connection = conn
+	s.Channel = channel
+
 	return nil
 }
 
@@ -165,10 +163,6 @@ func (s *BRServer) processMessage(body []byte) {
 		s.print(fmt.Sprintf("Current ItemList: %v", ItemList))
 	case PostItem:
 		ItemList = append(ItemList, data)
-		// _, err := s.File.WriteString(data + "\n")
-		// if err != nil {
-		// 	s.print(err.Error())
-		// }
 		s.print(fmt.Sprintf("Added Item: %v", data))
 		s.print(fmt.Sprintf("Current ItemList: %v", ItemList))
 	case DeleteItem:
