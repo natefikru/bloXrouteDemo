@@ -2,7 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
+	"time"
 
 	"github.com/streadway/amqp"
 )
@@ -13,7 +16,8 @@ const (
 	PostItem   = "POST_ITEM"
 	DeleteItem = "DELETE_ITEM"
 
-	QueueName = "BRQueue"
+	QueueName  = "BRQueue"
+	ValuesFile = "values.log"
 )
 
 var ItemList []string
@@ -27,6 +31,7 @@ type BRServer struct {
 	Connection *amqp.Connection
 	Channel    *amqp.Channel
 	Deliveries <-chan amqp.Delivery
+	File       *os.File
 }
 
 func newBRServer() *BRServer {
@@ -41,29 +46,41 @@ func main() {
 }
 
 func (s *BRServer) run() {
-	err := s.initConn()
+	err := s.initFileConn()
 	if err != nil {
-		fmt.Println(err)
+		s.print(err.Error())
 		panic(err)
 	}
+
+	s.print(fmt.Sprintf("Server is starting at %v: ", time.Now().String()))
+
+	err = s.initMQConn()
+	if err != nil {
+		s.print(err.Error())
+		panic(err)
+	}
+
+	s.print("Initialized MQ connection")
 
 	defer s.Connection.Close()
 	defer s.Channel.Close()
+	defer s.File.Close()
 
 	err = s.getDeliveries()
 	if err != nil {
-		fmt.Println(err)
+		s.print(err.Error())
 		panic(err)
 	}
+	s.print("Initialized MQ Deliveries")
 
 	err = s.consumeQueue()
 	if err != nil {
-		fmt.Println(err)
+		s.print(err.Error())
 		panic(err)
 	}
 }
 
-func (s *BRServer) initConn() error {
+func (s *BRServer) initMQConn() error {
 	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672")
 	if err != nil {
 		return err
@@ -80,6 +97,28 @@ func (s *BRServer) initConn() error {
 	return nil
 }
 
+func (s *BRServer) initFileConn() error {
+	var f *os.File
+	exists, err := valueFileExists()
+	if err != nil {
+		return err
+	}
+	if !exists {
+		f, err = os.Create(ValuesFile)
+		if err != nil {
+			return err
+		}
+
+	} else {
+		f, err = os.OpenFile(ValuesFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			return err
+		}
+	}
+	s.File = f
+	return nil
+}
+
 func (s *BRServer) getDeliveries() error {
 	deliveries, err := s.Channel.Consume(QueueName, "", true, false, false, false, nil)
 	if err != nil {
@@ -91,47 +130,51 @@ func (s *BRServer) getDeliveries() error {
 }
 
 func (s *BRServer) consumeQueue() error {
-	fmt.Println("Started RabbitMQ Consumer Process")
+	s.print("Starting RabbitMQ Consumer Process")
 
 	done := make(chan bool)
 	go func() {
 		for msg := range s.Deliveries {
-			processMessage(msg.Body)
+			s.processMessage(msg.Body)
 		}
 	}()
 	<-done
 	return nil
 }
 
-func processMessage(body []byte) {
+func (s *BRServer) processMessage(body []byte) {
 	message := MQMessage{}
 	err := json.Unmarshal(body, &message)
 	if err != nil {
-		fmt.Printf("error unmarshalling message: %v %v \n", body, err)
+		s.print(fmt.Sprintf("error unmarshalling message: %v %v", body, err))
 	} else {
-		fmt.Printf("Receied Message %v \n", message)
+		s.print(fmt.Sprintf("Received Message %v", message))
 	}
+
 	data := message.Data
 	command := message.Command
 	switch command {
 	case GetItem:
 		found := findInItemList(data)
 		if found {
-			fmt.Printf("%v Found in ItemList \n", data)
+			s.print(fmt.Sprintf("%v Found in ItemList", data))
 		} else {
-			fmt.Printf("%v Not found in ItemList\n", data)
+			s.print(fmt.Sprintf("%v Not found in ItemList", data))
 		}
 	case GetItems:
-		fmt.Println("Current ItemList")
-		fmt.Println(ItemList)
+		s.print(fmt.Sprintf("Current ItemList: %v", ItemList))
 	case PostItem:
 		ItemList = append(ItemList, data)
-		fmt.Println("Current ItemList")
-		fmt.Println(ItemList)
+		// _, err := s.File.WriteString(data + "\n")
+		// if err != nil {
+		// 	s.print(err.Error())
+		// }
+		s.print(fmt.Sprintf("Added Item: %v", data))
+		s.print(fmt.Sprintf("Current ItemList: %v", ItemList))
 	case DeleteItem:
 		removeFromItemList(data)
-		fmt.Println("Current ItemList")
-		fmt.Println(ItemList)
+		s.print(fmt.Sprintf("Removed Item: %v", data))
+		s.print(fmt.Sprintf("Current ItemList: %v", ItemList))
 	}
 }
 
@@ -150,4 +193,20 @@ func findInItemList(data string) bool {
 		}
 	}
 	return false
+}
+
+func valueFileExists() (bool, error) {
+	_, err := os.Stat(ValuesFile)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	return false, err
+}
+
+func (s *BRServer) print(str string) {
+	fmt.Fprintln(s.File, str)
+	fmt.Println(str)
 }
